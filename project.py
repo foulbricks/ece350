@@ -4,6 +4,11 @@ import requests
 import json
 import datetime
 
+BIT0 = 3   
+BIT1 = 5  
+BIT2 = 24  
+BIT3 = 26  
+
 # spindle circumference in centimeters
 circumf = 5.5
 
@@ -43,6 +48,10 @@ seg_pins = [16,18,19,36,37,38,40] # pins corresponding to segments a b c d e f g
 # = [0,1,2,3,4,5,6,7,8,9,A,B,C]
 dats = [0x3f,0x06,0x5b,0x4f,0x66,0x6d,0x7d,0x07,0x7f,0x6f,0x77,0x7c,0x39]
 
+
+bit_pins = [8,10,23,32,33,29,31,7,3,5,24,26] 
+bits = [BIT0, BIT1, BIT2, BIT3]  
+
 # set up the pins for the motor module to output, the 7-segment pins to output and buttons as input
 def setup():  
 	GPIO.setwarnings(False)  
@@ -55,6 +64,10 @@ def setup():
 	for pin in seg_pins:
 		GPIO.setup(pin, GPIO.OUT)   # Set pin mode as output
 		GPIO.output(pin, GPIO.LOW)
+		
+	for pin in bit_pins:
+		GPIO.setup(pin, GPIO.OUT)    #set all pins' mode is output  
+		GPIO.output(pin, GPIO.HIGH)  #set all pins are high level(3.3V)
 		
 	GPIO.setup(modeBtn, GPIO.IN, pull_up_down=GPIO.PUD_UP)    # Set modeBtn's mode as input, and pull
 	GPIO.setup(manualBtn, GPIO.IN, pull_up_down=GPIO.PUD_UP)    # Set manualBtn's mode as input, and pull
@@ -108,6 +121,71 @@ def writeOneByte(val):
 	GPIO.output(37, val & (0x01 << 4))  
 	GPIO.output(38, val & (0x01 << 5))  
 	GPIO.output(40, val & (0x01 << 6))
+	
+
+def digitalWriteByte(val):  
+	GPIO.output(8, val & (0x01 << 0))  
+	GPIO.output(10, val & (0x01 << 1))  
+	GPIO.output(23, val & (0x01 << 2))  
+	GPIO.output(32, val & (0x01 << 3))  
+	GPIO.output(33, val & (0x01 << 4))  
+	GPIO.output(29, val & (0x01 << 5))  
+	GPIO.output(31, val & (0x01 << 6))  
+	GPIO.output(7,  val & (0x01 << 7))
+	
+def display_3(num_str):
+	num = int(num_str)
+	b0 = num % 10  
+	b1 = num % 100 // 10   
+	b2 = num % 1000 // 100  
+	b3 = num // 1000  
+	if num < 10:  
+		GPIO.output(BIT0, GPIO.LOW)   
+		GPIO.output(BIT1, GPIO.HIGH)   
+		GPIO.output(BIT2, GPIO.HIGH)   
+		GPIO.output(BIT3, GPIO.HIGH)   
+		digitalWriteByte(dats[b0])
+	elif num >= 10 and num < 100:  
+		GPIO.output(BIT0, GPIO.LOW)  
+		digitalWriteByte(dats[b0])  
+		time.sleep(0.002)  
+		GPIO.output(BIT0, GPIO.HIGH)   
+		GPIO.output(BIT1, GPIO.LOW)  
+		digitalWriteByte(dats[b1])  
+		time.sleep(0.002)  
+		GPIO.output(BIT1, GPIO.HIGH)  
+	elif num >= 100 and num < 1000:  
+		GPIO.output(BIT0, GPIO.LOW)  
+		digitalWriteByte(dats[b0])  
+		time.sleep(0.002)  
+		GPIO.output(BIT0, GPIO.HIGH)   
+		GPIO.output(BIT1, GPIO.LOW)  
+		digitalWriteByte(dats[b1])  
+		time.sleep(0.002)  
+		GPIO.output(BIT1, GPIO.HIGH)  
+		GPIO.output(BIT2, GPIO.LOW)  
+		digitalWriteByte(dats[b2])  
+		time.sleep(0.002)  
+		GPIO.output(BIT2, GPIO.HIGH)   
+	elif num >= 1000 and num < 10000:  
+		GPIO.output(BIT0, GPIO.LOW)  
+		digitalWriteByte(dats[b0])  
+		time.sleep(0.002)  
+		GPIO.output(BIT0, GPIO.HIGH)   
+		GPIO.output(BIT1, GPIO.LOW)  
+		digitalWriteByte(dats[b1])  
+		time.sleep(0.002)  
+		GPIO.output(BIT1, GPIO.HIGH)  
+		GPIO.output(BIT2, GPIO.LOW)  
+		digitalWriteByte(dats[b2])  
+		time.sleep(0.002)  
+		GPIO.output(BIT2, GPIO.HIGH)   
+		GPIO.output(BIT3, GPIO.LOW)  
+		digitalWriteByte(dats[b3])  
+		time.sleep(0.002)  
+		GPIO.output(BIT3, GPIO.HIGH)    
+	else:  
+		print('Out of range, num should be 0~9999 !') 
 
 
 # Gets the sunset and sunrise times
@@ -193,6 +271,12 @@ def manualOperationFromDate():
 		# Check that open_at and close_at have been successfully set
 		if not open_at is None and not close_at is None:
 			currentDatetime = datetime.datetime.now()
+			
+			if closed:
+				show_time(open_at)
+			else:
+				show_time(close_at)
+			
 			# If so, check that the current time is higher than when it should open
 			# also make sure that the curtains are closed before opening them
 			if currentDatetime > open_at and closed:
@@ -208,7 +292,7 @@ def manualOperationFromDate():
 				close_at = close_at + datetime.timedelta(days=1)
 				print("Next closing at", open_at.strftime("%Y-%m-%d %I:%M:%S %p"))
 				closed = True
-			time.sleep(2)
+			time.sleep(0.5)
 				
 # This will open the curtains at sunrise and close the curtains at sunset
 def sunOperation():
@@ -220,21 +304,29 @@ def sunOperation():
 	
 	while modeCounter == 3:
 		currentDatetime = datetime.datetime.now()
+		
+		if closed:
+			show_time(sunrise)
+		else:
+			show_time(sunset)
+				
 		# Check that the sunrise has passed and the curtains are closed
 		if currentDatetime > sunrise and closed:
 			open_curtain(0.003, steps())
 			# set the curtain to open at next sunrise
 			sunrise, new_sunset = get_sunrise_sunset()
 			print("Will open next at", sunrise.strftime("%Y-%m-%d %I:%M:%S %p"))
+			display_3(new_sunset.strftime("%H%M"))
 			closed = False
 		# Check that the sunset has passed and the curtains are open
 		elif currentDatetime > sunset and not closed:
 			close_curtain(0.003, steps())
 			# set the curtain to close at next sunrise
 			new_sunrise, sunset = get_sunrise_sunset()
+			display_3(new_sunrise.strftime("%H%M"))
 			print("Will close next at", sunset.strftime("%Y-%m-%d %I:%M:%S %p"))
 			closed = True
-		time.sleep(2)
+		time.sleep(0.5)
 			
 # Indicates to the program if the curtains are initially closed or open	
 def setInitialState():
@@ -265,6 +357,10 @@ def timeStrToDatetime(input_str):
 
 def steps():
 	return int(distance / circumf * 512)
+	
+def show_time(d):
+	for i in range(500):
+		display_3(d.strftime("%H%M"))
 		
 if __name__ == "__main__":
 	try:
@@ -273,17 +369,32 @@ if __name__ == "__main__":
 		setInitialState()
 		
 		print("Please enter the width of the curtain in centimeters")
-		distance = int(input())
+		while True:
+			try:
+				distance = int(input())
+				break
+			except ValueError:
+				print("Invalid number")
 		
 		print("Please enter an optional time to open the curtains every day in the format HH:MM:SS")
 		print("Enter 0 if you would not like it to be set")
-		open_at_str = input()
-		open_at = timeStrToDatetime(open_at_str)
+		while True:
+			try:
+				open_at_str = input()
+				open_at = timeStrToDatetime(open_at_str)
+				break
+			except ValueError:
+				print("Invalid date format")
 		
 		print("Please enter an optional time to close the curtains every day in the format HH:MM:SS")
 		print("Enter 0 if you would not like it to be set")
-		close_at_str = input()
-		close_at = timeStrToDatetime(close_at_str)
+		while True:
+			try:
+				close_at_str = input()
+				close_at = timeStrToDatetime(close_at_str)
+				break
+			except ValueError:
+				print("Invalid date format")
 		
 		# Write mode initially
 		writeOneByte(dats[modeCounter])
@@ -299,5 +410,9 @@ if __name__ == "__main__":
 	except KeyboardInterrupt:
 		for pin in seg_pins:
 			GPIO.output(pin, GPIO.LOW)
+			
+		for pin in bit_pins:    
+			GPIO.output(pin, GPIO.LOW) #set all pins are low level(0V)   
+			GPIO.setup(pin, GPIO.IN)   #set all pins' mode is input  
 			
 		GPIO.cleanup()
