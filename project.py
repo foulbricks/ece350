@@ -301,3 +301,5 @@ if __name__ == "__main__":
 			GPIO.output(pin, GPIO.LOW)
 			
 		GPIO.cleanup()
+
+	
